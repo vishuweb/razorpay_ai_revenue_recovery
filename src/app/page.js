@@ -79,23 +79,31 @@ export default function DashboardPage() {
         <div className="card stat-card">
           <span className="stat-label">Total Revenue</span>
           <span className="stat-value text-emerald">{formatCurrency(data.totalRevenue)}</span>
-          <span className="stat-change positive">↑ 12% vs last month</span>
         </div>
         <div className="card stat-card animate-pulse-danger">
           <span className="stat-label">Revenue At Risk</span>
           <span className="stat-value text-danger glow-danger">{formatCurrency(data.revenueAtRisk)}</span>
-          <span className="stat-change negative">Critical attention needed</span>
         </div>
         <div className="card stat-card">
           <span className="stat-label">Revenue Recovered</span>
           <span className="stat-value">{formatCurrency(data.revenueRecovered)}</span>
-          <span className="stat-change positive">Active AI recovery</span>
         </div>
         <div className="card stat-card">
           <span className="stat-label">Recovery Rate</span>
           <span className="stat-value">{data.recoveryRate}%</span>
-          <span className="stat-change positive">↑ 2.4% via AI actions</span>
         </div>
+        {data.interventionCost !== undefined && (
+          <div className="card stat-card">
+            <span className="stat-label">Intervention Cost</span>
+            <span className="stat-value" style={{ color: 'var(--warning)' }}>{formatCurrency(data.interventionCost)}</span>
+          </div>
+        )}
+        {data.netRecovery !== undefined && (
+          <div className="card stat-card">
+            <span className="stat-label">Net Recovery</span>
+            <span className="stat-value text-emerald">{formatCurrency(data.netRecovery)}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid-cols-2" style={{ marginBottom: '24px' }}>

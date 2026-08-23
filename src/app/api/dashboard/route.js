@@ -53,6 +53,30 @@ export async function GET() {
       if (statusBreakdown[row.status] !== undefined) statusBreakdown[row.status] = row.count
     }
 
+    const interventionCostRow = db.prepare(`SELECT COALESCE(SUM(intervention_cost), 0) as sum FROM recovery_cases`).get()
+    const interventionCost = interventionCostRow.sum || 0
+    const netRecovery = revenueRecovered - interventionCost
+
+    const recoveryByAction = db.prepare(`
+      SELECT recommended_action as action, COUNT(*) as count, COALESCE(SUM(recovered_amount),0) as recovered 
+      FROM recovery_cases 
+      GROUP BY recommended_action
+    `).all()
+
+    const recoveryBySegment = db.prepare(`
+      SELECT c.plan, COUNT(*) as count, SUM(rc.amount_at_risk) as atRisk, SUM(rc.recovered_amount) as recovered 
+      FROM recovery_cases rc 
+      JOIN customers c ON rc.customer_id = c.id 
+      GROUP BY c.plan
+    `).all()
+
+    let eventBreakdown = []
+    try {
+      eventBreakdown = db.prepare(`SELECT event_type, COUNT(*) as count FROM events GROUP BY event_type`).all()
+    } catch (e) {
+      // table might not exist in old schema
+    }
+
     return NextResponse.json({
       totalRevenue: totalRevenueRow.sum || 0,
       revenueAtRisk: revenueAtRiskRow.sum || 0,
@@ -65,7 +89,12 @@ export async function GET() {
       failureReasons,
       recentCases,
       recoveryTrend,
-      statusBreakdown
+      statusBreakdown,
+      interventionCost,
+      netRecovery,
+      recoveryByAction,
+      recoveryBySegment,
+      eventBreakdown
     })
   } catch (error) {
     console.error('Dashboard Error:', error)

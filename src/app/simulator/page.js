@@ -31,6 +31,9 @@ export default function SimulatorPage() {
     { title: 'Chronic Failure', desc: 'Multiple failures over time. Low probability, requires human intervention.', type: 'chronic' },
     { title: 'High-Value Alert', desc: 'Large MRR customer fails payment. High priority score assigned.', type: 'high_value' },
     { title: 'Expired Card', desc: 'Hard decline due to expired card. Automated outreach required.', type: 'expired_card' },
+    { title: '🛒 Checkout Abandoned', desc: 'Customer left checkout without paying', type: 'checkout_abandoned', command: 'trigger_event', paramKey: 'eventType' },
+    { title: '⏰ Checkout Timeout', desc: 'Session expired during checkout', type: 'checkout_timeout', command: 'trigger_event', paramKey: 'eventType' },
+    { title: '📦 Expiring Inventory', desc: 'Inventory approaching expiry date', type: 'near_expiry_inventory', command: 'trigger_event', paramKey: 'eventType' },
   ];
 
   return (
@@ -45,21 +48,53 @@ export default function SimulatorPage() {
       </div>
 
       <div className="grid-cols-3" style={{ marginBottom: '24px' }}>
-        <div className="card card-elevated">
+        <div className="card-elevated" style={{ padding: '24px' }}>
           <h3 style={{ marginBottom: '16px' }}>Control Panel</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
-            Initialize the database with synthetic data or generate bulk failures.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button className="btn danger" onClick={() => handleCommand('seed')} disabled={loading}>
-              Seed Fresh Database
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => handleCommand('seed')}
+              disabled={loading}
+            >
+              🌱 Seed Database
             </button>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input type="number" className="input" value={bulkCount} onChange={(e) => setBulkCount(e.target.value)} style={{ width: '80px' }} />
-              <button className="btn ghost" onClick={() => handleCommand('bulk_scenarios', { count: bulkCount })} disabled={loading} style={{ flex: 1 }}>
-                Generate Bulk Failures
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input 
+                type="number" 
+                className="input" 
+                value={bulkCount}
+                onChange={(e) => setBulkCount(Number(e.target.value))}
+                style={{ width: '80px' }}
+                min="1"
+                max="50"
+              />
+              <button 
+                className="btn btn-ghost" 
+                onClick={() => handleCommand('bulk_scenarios', { count: bulkCount })}
+                disabled={loading}
+              >
+                🎲 Run Bulk Scenarios
               </button>
             </div>
+            <button 
+              className="btn btn-primary"
+              style={{ background: 'linear-gradient(135deg, #3742fa, #00d4aa)', color: '#fff', border: 'none' }}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const res = await fetch('/api/cron');
+                  const data = await res.json();
+                  setResult(data);
+                } catch (err) {
+                  setResult({ error: err.message });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              ⚡ Auto-Pilot Sweep (Run Cron)
+            </button>
           </div>
         </div>
 
@@ -112,7 +147,13 @@ export default function SimulatorPage() {
           <div key={i} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
             <h4 style={{ marginBottom: '8px' }}>{s.title}</h4>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px', flex: 1 }}>{s.desc}</p>
-            <button className="btn ghost" onClick={() => handleCommand('trigger_scenario', { type: s.type })} disabled={loading}>
+            <button className="btn ghost" onClick={() => {
+              if (s.command) {
+                handleCommand(s.command, { [s.paramKey]: s.type });
+              } else {
+                handleCommand('trigger_scenario', { type: s.type });
+              }
+            }} disabled={loading}>
               Trigger Event
             </button>
           </div>

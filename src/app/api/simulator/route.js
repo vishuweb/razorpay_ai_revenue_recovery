@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { resetDatabase } from '@/lib/db/database'
 import { generateSimulationData } from '@/lib/simulation/generator'
 import { triggerScenario } from '@/lib/simulation/scenarios'
-import { executeRecoveryAction, processRecoveryOutcome, processFailedPayment } from '@/lib/engine/orchestrator'
+import { executeRecoveryAction, processRecoveryOutcome, processFailedPayment, processEvent } from '@/lib/engine/orchestrator'
 import { getDb } from '@/lib/db/database'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -15,6 +15,26 @@ export async function POST(request) {
       resetDatabase()
       const stats = await generateSimulationData()
       return NextResponse.json({ success: true, message: 'Database seeded', stats })
+    }
+
+    if (command === 'trigger_event') {
+      let { eventType, customerId, amount } = params || {}
+      if (!eventType) return NextResponse.json({ error: 'eventType required' }, { status: 400 })
+      
+      if (!customerId) {
+        const randomCustomer = db.prepare(`SELECT id FROM customers ORDER BY RANDOM() LIMIT 1`).get()
+        if (!randomCustomer) return NextResponse.json({ error: 'No customers found' }, { status: 404 })
+        customerId = randomCustomer.id
+      }
+
+      const eventId = uuidv4()
+      db.prepare(`
+        INSERT INTO events (id, event_type, customer_id, source, amount, metadata, processed, created_at)
+        VALUES (?, ?, ?, 'simulator', ?, '{}', 0, datetime('now'))
+      `).run(eventId, eventType, customerId, amount || 0)
+
+      const result = await processEvent(eventId)
+      return NextResponse.json({ success: true, eventId, case: result })
     }
 
     if (command === 'trigger_scenario') {

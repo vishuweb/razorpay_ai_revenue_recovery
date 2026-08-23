@@ -1,6 +1,6 @@
 import { getDb, auditLog } from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
-import { classifyFailure } from './classifier.js';
+import { classifyFailure, classifyEvent } from './classifier.js';
 import { predictRecovery } from './predictor.js';
 import { calculatePriority } from './prioritizer.js';
 import { decideAction } from './decider.js';
@@ -60,10 +60,10 @@ export function processFailedPayment(paymentId) {
   
   db.prepare(`
     INSERT INTO recovery_actions (
-      id, case_id, action_type, status, scheduled_at, requires_approval, ai_reasoning, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, case_id, action_type, status, scheduled_at, requires_approval, ai_reasoning, discount_percent, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    actionId, caseId, decision.action, 'pending', scheduledAt, decision.requiresApproval ? 1 : 0, decision.reasoning, new Date().toISOString()
+    actionId, caseId, decision.action, 'pending', scheduledAt, decision.requiresApproval ? 1 : 0, decision.reasoning, decision.discount_percent || null, new Date().toISOString()
   );
 
   auditLog({
@@ -79,6 +79,91 @@ export function processFailedPayment(paymentId) {
   return { caseId, actionId, decision };
 }
 
+export function processEvent(eventId) {
+  const db = getDb();
+  
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  if (!event) throw new Error('Event not found');
+  
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(event.customer_id);
+  if (!customer) throw new Error('Customer not found');
+
+  const metadata = event.metadata ? JSON.parse(event.metadata) : {};
+  const classification = classifyEvent(event.event_type, metadata);
+  
+  const paymentId = uuidv4();
+  db.prepare(`
+    INSERT INTO payments (
+      id, customer_id, amount, currency, status, method, failure_reason, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    paymentId, customer.id, event.amount || 0, 'INR', 'pending', 'none', event.event_type, new Date().toISOString()
+  );
+
+  const caseData = {
+    attempts_made: 0,
+    max_attempts: 5,
+    failure_category: classification.category,
+    amount_at_risk: event.amount || 0,
+    opened_at: new Date().toISOString()
+  };
+
+  const prediction = predictRecovery(classification.baseRecoveryProbability, customer, caseData);
+  
+  const priority = calculatePriority(prediction.probability, caseData.amount_at_risk, customer.lifetime_value, 100);
+  
+  const decision = decideAction(
+    { ...caseData, failure_reason: event.event_type },
+    customer,
+    classification,
+    prediction,
+    priority
+  );
+
+  const caseId = uuidv4();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  
+  db.prepare(`
+    INSERT INTO recovery_cases (
+      id, customer_id, event_id, payment_id, amount_at_risk, 
+      failure_reason, failure_category, recovery_probability, priority_score, 
+      recommended_action, ai_reasoning, status, current_step, max_attempts, 
+      attempts_made, recovered_amount, opened_at, expires_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    caseId, customer.id, event.id, paymentId, caseData.amount_at_risk,
+    event.event_type, classification.category, prediction.probability, priority.score,
+    decision.action, decision.reasoning, 'open', 1, 5, 0, 0, caseData.opened_at, expiresAt, new Date().toISOString()
+  );
+
+  const actionId = uuidv4();
+  const scheduledAt = new Date(Date.now() + decision.scheduledDelay).toISOString();
+  
+  db.prepare(`
+    INSERT INTO recovery_actions (
+      id, case_id, action_type, status, scheduled_at, requires_approval, ai_reasoning, discount_percent, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    actionId, caseId, decision.action, 'pending', scheduledAt, decision.requiresApproval ? 1 : 0, decision.reasoning, decision.discount_percent || null, new Date().toISOString()
+  );
+
+  db.prepare('UPDATE events SET processed = 1 WHERE id = ?').run(event.id);
+
+  db.prepare('UPDATE customers SET intervention_count = COALESCE(intervention_count, 0) + 1, last_intervention_at = ? WHERE id = ?').run(new Date().toISOString(), customer.id);
+
+  auditLog({
+    entityType: 'case',
+    entityId: caseId,
+    eventType: 'case_opened',
+    description: `Recovery case opened for event ${event.id}`,
+    details: JSON.stringify({ classification, prediction, priority, decision }),
+    actor: 'system',
+    amount: caseData.amount_at_risk
+  });
+
+  return { caseId, actionId, decision };
+}
+
 export async function executeRecoveryAction(actionId) {
   const db = getDb();
   
@@ -88,9 +173,11 @@ export async function executeRecoveryAction(actionId) {
   const caseData = db.prepare('SELECT * FROM recovery_cases WHERE id = ?').get(action.case_id);
   if (!caseData) throw new Error('Case not found');
 
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(caseData.customer_id);
+
   const history = db.prepare('SELECT * FROM recovery_actions WHERE case_id = ?').all(caseData.id);
   
-  const guardrailsResult = checkGuardrails(caseData, action.action_type, history);
+  const guardrailsResult = checkGuardrails(caseData, action, history, customer);
   
   if (!guardrailsResult.allowed) {
     db.prepare('UPDATE recovery_actions SET status = ?, result_details = ? WHERE id = ?')
@@ -136,7 +223,6 @@ export async function executeRecoveryAction(actionId) {
 
       // Re-run AI to decide next action
       const updatedCaseData = db.prepare('SELECT * FROM recovery_cases WHERE id = ?').get(caseData.id);
-      const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(caseData.customer_id);
       const classification = classifyFailure(payment.failure_reason, payment.failure_source);
       const prediction = predictRecovery(classification.baseRecoveryProbability, customer, updatedCaseData);
       const priority = calculatePriority(prediction.probability, payment.amount, customer.lifetime_value, 100);
@@ -148,16 +234,26 @@ export async function executeRecoveryAction(actionId) {
       
       db.prepare(`
         INSERT INTO recovery_actions (
-          id, case_id, action_type, status, scheduled_at, requires_approval, ai_reasoning, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          id, case_id, action_type, status, scheduled_at, requires_approval, ai_reasoning, discount_percent, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        nextActionId, caseData.id, nextDecision.action, 'pending', scheduledAt, nextDecision.requiresApproval ? 1 : 0, nextDecision.reasoning, new Date().toISOString()
+        nextActionId, caseData.id, nextDecision.action, 'pending', scheduledAt, nextDecision.requiresApproval ? 1 : 0, nextDecision.reasoning, nextDecision.discount_percent || null, new Date().toISOString()
       );
     }
   } else if (action.action_type === 'payment_link') {
     result = await provider.createPaymentLink(caseData.customer_id, caseData.amount_at_risk, `Recovery for case ${caseData.id}`);
     db.prepare('UPDATE recovery_actions SET status = ?, result = ?, result_details = ? WHERE id = ?')
       .run('completed', 'success', JSON.stringify(result), action.id);
+  } else if (['discount', 'free_shipping', 'cart_reminder', 'targeted_campaign'].includes(action.action_type)) {
+    result = { msg: `Executed ${action.action_type}`, success: true };
+    db.prepare('UPDATE recovery_actions SET status = ?, result = ?, result_details = ? WHERE id = ?')
+      .run('completed', 'success', JSON.stringify(result), action.id);
+
+    if (action.discount_percent) {
+      const interventionCost = Math.round(caseData.amount_at_risk * (action.discount_percent / 100));
+      db.prepare('UPDATE recovery_cases SET intervention_cost = ? WHERE id = ?')
+        .run(interventionCost, caseData.id);
+    }
   } else {
     // email, sms, escalate, stop
     result = { msg: `Executed ${action.action_type}` };
@@ -209,4 +305,49 @@ export function processRecoveryOutcome(caseId, paymentResult) {
       amount: caseData.amount_at_risk
     });
   }
+}
+
+export async function processPendingAutomations() {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  const pendingActions = db.prepare(`
+    SELECT id FROM recovery_actions 
+    WHERE status = 'pending' 
+      AND scheduled_at <= ?
+      AND (requires_approval = 0 OR approved_by IS NOT NULL)
+  `).all(now);
+
+  const actionResults = [];
+  for (const action of pendingActions) {
+    try {
+      const result = await executeRecoveryAction(action.id);
+      actionResults.push({ id: action.id, status: result.status });
+    } catch (e) {
+      actionResults.push({ id: action.id, status: 'error', error: e.message });
+    }
+  }
+
+  const unhandledPayments = db.prepare(`
+    SELECT p.id FROM payments p
+    LEFT JOIN recovery_cases r ON p.id = r.payment_id
+    WHERE p.status = 'failed' AND r.id IS NULL
+  `).all();
+
+  const caseResults = [];
+  for (const payment of unhandledPayments) {
+    try {
+      const result = processFailedPayment(payment.id);
+      caseResults.push({ id: payment.id, caseId: result.caseId });
+    } catch (e) {
+      caseResults.push({ id: payment.id, error: e.message });
+    }
+  }
+
+  return { 
+    actionsProcessed: actionResults.length, 
+    actionResults,
+    paymentsProcessed: caseResults.length,
+    caseResults
+  };
 }

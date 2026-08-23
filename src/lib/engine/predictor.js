@@ -14,12 +14,29 @@ export function predictRecovery(baseProb, customerData, caseData) {
 
   const hoursSinceOpened = opened_at ? (Date.now() - new Date(opened_at).getTime()) / (1000 * 60 * 60) : 0;
   let timingFactor = 0.5;
-  if (hoursSinceOpened < 6) timingFactor = 1.0;
-  else if (hoursSinceOpened < 24) timingFactor = 0.95;
-  else if (hoursSinceOpened < 72) timingFactor = 0.85;
-  else if (hoursSinceOpened < 168) timingFactor = 0.7;
+  if (failure_category === 'abandonment') {
+    if (hoursSinceOpened < 1) timingFactor = 1.0;
+    else if (hoursSinceOpened < 6) timingFactor = 0.7;
+    else if (hoursSinceOpened < 24) timingFactor = 0.4;
+    else timingFactor = 0.2;
+  } else {
+    if (hoursSinceOpened < 6) timingFactor = 1.0;
+    else if (hoursSinceOpened < 24) timingFactor = 0.95;
+    else if (hoursSinceOpened < 72) timingFactor = 0.85;
+    else if (hoursSinceOpened < 168) timingFactor = 0.7;
+  }
 
-  let finalProb = baseProb * customerHistoryFactor * retryDecayFactor * customerValueFactor * timingFactor;
+  let discountAffinityFactor = 1.0;
+  if (failure_category === 'abandonment' && customerData.discount_affinity > 0.5) {
+    discountAffinityFactor = 1.1;
+  }
+
+  let opportunityBoost = 1.0;
+  if (failure_category === 'opportunity' && customerData.avg_order_value > 50000) {
+    opportunityBoost = 1.2;
+  }
+
+  let finalProb = baseProb * customerHistoryFactor * retryDecayFactor * customerValueFactor * timingFactor * discountAffinityFactor * opportunityBoost;
   finalProb = Math.max(0.01, Math.min(0.99, finalProb));
 
   return {
@@ -29,8 +46,10 @@ export function predictRecovery(baseProb, customerData, caseData) {
       { name: 'customerHistoryFactor', value: customerHistoryFactor },
       { name: 'retryDecayFactor', value: retryDecayFactor },
       { name: 'customerValueFactor', value: customerValueFactor },
-      { name: 'timingFactor', value: timingFactor }
+      { name: 'timingFactor', value: timingFactor },
+      { name: 'discountAffinityFactor', value: discountAffinityFactor },
+      { name: 'opportunityBoost', value: opportunityBoost }
     ],
-    explanation: `Predicted probability is ${(finalProb*100).toFixed(1)}%. Customer history factor is ${customerHistoryFactor.toFixed(2)}, retry decay is ${retryDecayFactor.toFixed(2)}, value factor is ${customerValueFactor.toFixed(2)}, and timing factor is ${timingFactor.toFixed(2)}.`
+    explanation: `Predicted probability is ${(finalProb*100).toFixed(1)}%. Factors: history ${customerHistoryFactor.toFixed(2)}, retry decay ${retryDecayFactor.toFixed(2)}, value ${customerValueFactor.toFixed(2)}, timing ${timingFactor.toFixed(2)}.`
   };
 }

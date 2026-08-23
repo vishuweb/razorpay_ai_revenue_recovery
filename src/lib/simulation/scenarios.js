@@ -1,16 +1,35 @@
 import { getDb, auditLog } from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
-import { processFailedPayment } from '../engine/orchestrator.js';
+import { processFailedPayment, processEvent } from '../engine/orchestrator.js';
 
 export function triggerScenario(scenarioType) {
   const db = getDb();
   let type = scenarioType;
   
-  const types = ['temporary_failure', 'chronic_failure', 'high_value_failure', 'expired_card', 'gateway_outage'];
+  const types = ['temporary_failure', 'chronic_failure', 'high_value_failure', 'expired_card', 'gateway_outage', 'checkout_abandoned', 'checkout_timeout', 'near_expiry_inventory'];
   if (type === 'random') type = types[Math.floor(Math.random() * types.length)];
 
+  if (['checkout_abandoned', 'checkout_timeout', 'near_expiry_inventory'].includes(type)) {
+    const targetCustomer = db.prepare('SELECT * FROM customers ORDER BY RANDOM() LIMIT 1').get();
+    if (!targetCustomer) return { error: 'No customers found' };
+    
+    const eventId = uuidv4();
+    const amount = type === 'near_expiry_inventory' ? 5000 : (targetCustomer.avg_order_value || 10000);
+    const metadata = type === 'near_expiry_inventory' ? { item_id: 'expiring_sku' } : { items: ['abandoned_item'] };
+    
+    db.prepare(`
+      INSERT INTO events (
+        id, event_type, customer_id, source, amount, metadata, processed, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(eventId, type, targetCustomer.id, 'simulation', amount, JSON.stringify(metadata), 0, new Date().toISOString());
+    
+    const result = processEvent(eventId);
+    return { scenario: type, cases: [result] };
+  }
+
   let targetCustomer;
-  let failureReason = 'insufficient_funds';
+  const failureReasons = ['insufficient_funds', 'gateway_error', 'card_declined', 'payment_timed_out', 'authentication_failed', 'card_expired'];
+  let failureReason = failureReasons[Math.floor(Math.random() * failureReasons.length)];
   let failureSource = 'bank';
   let isGatewayOutage = false;
 
@@ -21,9 +40,9 @@ export function triggerScenario(scenarioType) {
     failureReason = 'card_declined';
     db.prepare('UPDATE customers SET failed_payments = failed_payments + 5 WHERE id = ?').run(targetCustomer.id);
   } else if (type === 'high_value_failure') {
-    targetCustomer = db.prepare('SELECT * FROM customers WHERE plan = "enterprise" ORDER BY RANDOM() LIMIT 1').get();
+    targetCustomer = db.prepare("SELECT * FROM customers WHERE plan = 'enterprise' ORDER BY RANDOM() LIMIT 1").get();
   } else if (type === 'expired_card') {
-    targetCustomer = db.prepare('SELECT * FROM customers WHERE payment_method = "card" ORDER BY RANDOM() LIMIT 1').get();
+    targetCustomer = db.prepare("SELECT * FROM customers WHERE payment_method = 'card' ORDER BY RANDOM() LIMIT 1").get();
     if (!targetCustomer) targetCustomer = db.prepare('SELECT * FROM customers ORDER BY RANDOM() LIMIT 1').get(); // Fallback
     failureReason = 'card_expired';
   } else if (type === 'gateway_outage') {
@@ -55,7 +74,7 @@ export function triggerScenario(scenarioType) {
 
     db.prepare('UPDATE customers SET failed_payments = failed_payments + 1 WHERE id = ?').run(customer.id);
     if (sub) {
-      db.prepare('UPDATE subscriptions SET status = "past_due" WHERE id = ?').run(sub.id);
+      db.prepare("UPDATE subscriptions SET status = 'past_due' WHERE id = ?").run(sub.id);
     }
 
     return processFailedPayment(payId);

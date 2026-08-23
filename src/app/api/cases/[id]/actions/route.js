@@ -26,17 +26,17 @@ export async function POST(request, { params }) {
     }
     
     // Guardrails check could be simulated here, or pass action directly
-    const guardrailsResult = await checkGuardrails(caseRecord, actionType)
+    const guardrailsResult = checkGuardrails(caseRecord, actionType, [], null)
     if (!guardrailsResult.allowed) {
-      return NextResponse.json({ error: 'Guardrails failed', details: guardrailsResult.reason }, { status: 403 })
+      return NextResponse.json({ error: 'Guardrails failed', details: guardrailsResult.violations }, { status: 403 })
     }
 
     db.prepare(`
-      INSERT INTO recovery_actions (id, case_id, type, status, priority, scheduled_for, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(newActionId, id, actionType, 'pending', 'high')
+      INSERT INTO recovery_actions (id, case_id, action_type, status, scheduled_at, ai_reasoning, created_at)
+      VALUES (?, ?, ?, 'pending', datetime('now'), 'Manual action created by user', datetime('now'))
+    `).run(newActionId, id, actionType)
 
-    auditLog('recovery_case', id, 'manual_action_created', 'user', { actionId: newActionId, actionType })
+    auditLog({ entityType: 'case', entityId: id, eventType: 'manual_action_created', actor: 'user', description: `Manual action ${actionType} created`, details: { actionId: newActionId, actionType } })
 
     let result = null
     if (execute) {

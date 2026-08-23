@@ -132,6 +132,11 @@ export default function CaseDetailPage({ params }) {
             <button className="btn ghost" onClick={() => handleAction('execute')} disabled={actionLoading || c.status === 'recovered' || c.status === 'failed'}>
               Execute Now
             </button>
+            {(c.status === 'open' || c.status === 'in_progress') && (
+              <button className="btn" style={{ background: 'var(--warning)', color: '#000' }} onClick={() => handleAction('escalate')} disabled={actionLoading}>
+                Escalate
+              </button>
+            )}
             <button className="btn danger" onClick={() => handleAction('stop')} disabled={actionLoading || c.status === 'recovered' || c.status === 'failed'}>
               Stop Recovery
             </button>
@@ -180,6 +185,7 @@ export default function CaseDetailPage({ params }) {
                     </div>
                     <div className="badge muted mb-2">{a.status}</div>
                     {a.ai_reasoning && <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '8px' }}>{a.ai_reasoning}</p>}
+                    {a.discount_percent && <div className="badge warning" style={{ marginTop: '8px' }}>Discount: {a.discount_percent}%</div>}
                     {a.result && <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', fontSize: '0.875rem' }}>Result: {a.result}</div>}
                   </div>
                 </div>

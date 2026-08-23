@@ -98,6 +98,33 @@ export default function CustomerDetailPage({ params }) {
       </div>
 
       <div className="grid-cols-2" style={{ marginBottom: '24px' }}>
+        <div className="card" style={{ gridColumn: 'span 2' }}>
+          <h3 style={{ marginBottom: '16px' }}>Customer Intelligence</h3>
+          <div className="intelligence-card" style={{ padding: 0 }}>
+            <div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Discount Affinity</div>
+              <div className="affinity-bar">
+                <div className="affinity-bar-fill" style={{ width: `${(customer.discount_affinity || 0) * 100}%` }}></div>
+              </div>
+              <div style={{ fontSize: '0.75rem', marginTop: '4px', textAlign: 'right' }}>{Math.round((customer.discount_affinity || 0) * 100)}%</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Avg Order Value</div>
+              <div>{formatCurrency(customer.avg_order_value || 0)}</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Intervention Count</div>
+              <div>{customer.intervention_count || 0}</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Opted Out</div>
+              <div>{customer.opted_out ? 'Yes' : 'No'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-cols-2" style={{ marginBottom: '24px' }}>
         <div className="card">
           <h3 style={{ marginBottom: '16px' }}>Active Recovery Cases</h3>
           {recoveryCases?.length > 0 ? (
@@ -157,6 +184,38 @@ export default function CustomerDetailPage({ params }) {
             <p style={{ color: 'var(--text-muted)' }}>No payment history available.</p>
           )}
         </div>
+        
+        {data.interventionHistory && (
+          <div className="card" style={{ gridColumn: 'span 2' }}>
+            <h3 style={{ marginBottom: '16px' }}>Intervention History</h3>
+            {data.interventionHistory.length > 0 ? (
+              <div className="table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Action Type</th>
+                      <th>Discount %</th>
+                      <th>Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.interventionHistory.map((inv, idx) => (
+                      <tr key={idx}>
+                        <td style={{ color: 'var(--text-secondary)' }}>{new Date(inv.created_at).toLocaleDateString()}</td>
+                        <td>{inv.action_type}</td>
+                        <td>{inv.discount_percent ? `${inv.discount_percent}%` : '-'}</td>
+                        <td>{inv.result || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-muted)' }}>No intervention history available.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -4,24 +4,32 @@ import { processFailedPayment, processRecoveryOutcome } from '@/lib/engine/orche
 
 export async function POST(request) {
   try {
-    const { event, payload } = await request.json()
+    const data = await request.json()
+    const { event, payload } = data
+
+    if (!event || !payload || !payload.payment) {
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+    }
+
     const db = getDb()
 
     if (event === 'payment.failed') {
-      const p = payload.payment
+      const p = payload.payment.entity || payload.payment
       let paymentId = p.id
-      const existing = db.prepare(`SELECT id FROM payments WHERE id = ?`).get(paymentId)
-      if (!existing) {
-        db.prepare(`
-          INSERT INTO payments (id, customer_id, subscription_id, invoice_id, amount, status, failure_reason, attempted_at)
-          VALUES (?, ?, ?, ?, ?, 'failed', ?, datetime('now'))
-        `).run(paymentId, p.customer_id, p.subscription_id || null, p.invoice_id || null, p.amount, p.failure_reason || 'unknown')
-      }
+      db.prepare(`
+        INSERT INTO payments (id, customer_id, subscription_id, invoice_id, amount, status, failure_reason, attempted_at)
+        VALUES (?, ?, ?, ?, ?, 'failed', ?, datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET 
+          status = 'failed',
+          failure_reason = excluded.failure_reason,
+          attempted_at = excluded.attempted_at
+      `).run(paymentId, p.customer_id, p.subscription_id || null, p.invoice_id || null, p.amount, p.error_reason || p.failure_reason || 'unknown')
+      
       await processFailedPayment(paymentId)
-      auditLog('webhook', paymentId, 'payment_failed_webhook', 'system', { event, payload })
+      auditLog({ entityType: 'webhook', entityId: paymentId, eventType: 'payment_failed_webhook', actor: 'system', description: `Payment failed webhook processed`, details: { event, payload } })
     } 
     else if (event === 'payment.captured' || event === 'subscription.charged') {
-      const p = payload.payment
+      const p = payload.payment.entity || payload.payment
       let paymentId = p.id
       
       db.prepare(`
@@ -43,7 +51,7 @@ export async function POST(request) {
         db.prepare(`UPDATE subscriptions SET status = 'active' WHERE id = ?`).run(p.subscription_id)
       }
 
-      auditLog('webhook', paymentId, 'payment_success_webhook', 'system', { event, payload })
+      auditLog({ entityType: 'webhook', entityId: paymentId, eventType: 'payment_success_webhook', actor: 'system', description: `Payment success webhook processed`, details: { event, payload } })
     }
 
     return NextResponse.json({ received: true })

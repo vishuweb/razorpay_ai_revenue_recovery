@@ -8,6 +8,16 @@ export default function AuditPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [entityType, setEntityType] = useState('');
+  const [expandedDetails, setExpandedDetails] = useState(new Set());
+
+  const toggleDetails = (id) => {
+    setExpandedDetails(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   
   const fetchAudit = async () => {
     setLoading(true);
@@ -82,12 +92,25 @@ export default function AuditPage() {
                       <strong style={{ fontSize: '1.1rem', marginRight: '12px' }}>{entry.event_type}</strong>
                       {getActorBadge(entry.actor)}
                     </div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                      {new Date(entry.created_at).toLocaleString()}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {entry.details && (
+                        <button className="details-toggle" onClick={() => toggleDetails(entry.id)}>
+                          {expandedDetails.has(entry.id) ? 'Hide Details' : 'Show Details'}
+                        </button>
+                      )}
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                        {new Date(entry.created_at).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
                   
                   <p style={{ color: 'var(--text-primary)', marginBottom: '12px' }}>{entry.description}</p>
+
+                  {expandedDetails.has(entry.id) && entry.details && (
+                    <div className="code-block" style={{ marginBottom: '12px' }}>
+                      {JSON.stringify(entry.details, null, 2)}
+                    </div>
+                  )}
                   
                   <div style={{ display: 'flex', gap: '16px', fontSize: '0.875rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: '4px' }}>
                     <div>

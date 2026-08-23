@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS customers (
   total_payments INTEGER NOT NULL DEFAULT 0,
   successful_payments INTEGER NOT NULL DEFAULT 0,
   failed_payments INTEGER NOT NULL DEFAULT 0,
+  discount_affinity REAL NOT NULL DEFAULT 0.0,
+  avg_order_value INTEGER NOT NULL DEFAULT 0,
+  intervention_count INTEGER NOT NULL DEFAULT 0,
+  last_intervention_at TEXT,
+  opted_out INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -70,6 +75,8 @@ CREATE TABLE IF NOT EXISTS recovery_cases (
   payment_id TEXT NOT NULL REFERENCES payments(id),
   subscription_id TEXT REFERENCES subscriptions(id),
   invoice_id TEXT REFERENCES invoices(id),
+  event_id TEXT,
+  intervention_cost INTEGER NOT NULL DEFAULT 0,
   amount_at_risk INTEGER NOT NULL,
   failure_reason TEXT NOT NULL,
   failure_category TEXT NOT NULL DEFAULT 'unknown',
@@ -100,6 +107,8 @@ CREATE TABLE IF NOT EXISTS recovery_actions (
   requires_approval INTEGER NOT NULL DEFAULT 0,
   approved_by TEXT,
   ai_reasoning TEXT,
+  discount_percent REAL,
+  incentive_value INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -112,6 +121,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details TEXT,
   actor TEXT NOT NULL DEFAULT 'system',
   amount INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  customer_id TEXT REFERENCES customers(id) ON DELETE CASCADE,
+  payment_id TEXT REFERENCES payments(id),
+  source TEXT NOT NULL DEFAULT 'system',
+  amount INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT,
+  processed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -131,3 +152,6 @@ CREATE INDEX IF NOT EXISTS idx_recovery_actions_status ON recovery_actions(statu
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_processed ON events(processed);
+CREATE INDEX IF NOT EXISTS idx_events_customer ON events(customer_id);

@@ -21,6 +21,7 @@ export async function GET(request, { params }) {
     return NextResponse.json({
       case: caseRecord,
       customer,
+      actions: recoveryActions,
       recoveryActions,
       auditEntries,
       payment,
@@ -36,39 +37,56 @@ export async function GET(request, { params }) {
 export async function PATCH(request, { params }) {
   try {
     const { id } = await params
-    const { action, actionId } = await request.json()
+    const body = await request.json()
+    const { action, notes } = body
+    let { actionId } = body
     const db = getDb()
 
     const caseRecord = db.prepare(`SELECT * FROM recovery_cases WHERE id = ?`).get(id)
     if (!caseRecord) return NextResponse.json({ error: 'Case not found' }, { status: 404 })
 
+    if (notes) {
+      auditLog({ entityType: 'case', entityId: id, eventType: 'case_updated', actor: 'user', description: `Note added: ${notes}`, details: { notes } })
+      return NextResponse.json({ success: true, message: 'Note recorded' })
+    }
+
     if (action === 'approve') {
-      if (!actionId) return NextResponse.json({ error: 'actionId required' }, { status: 400 })
+      if (!actionId) {
+        const pendingAction = db.prepare(`SELECT id FROM recovery_actions WHERE case_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`).get(id)
+        if (pendingAction) actionId = pendingAction.id
+      }
+      if (!actionId) return NextResponse.json({ error: 'No pending action found to approve' }, { status: 400 })
+
       db.prepare(`UPDATE recovery_actions SET status = 'approved', approved_by = 'user' WHERE id = ?`).run(actionId)
-      auditLog('recovery_case', id, 'action_approved', 'user', { actionId })
+      auditLog({ entityType: 'case', entityId: id, eventType: 'action_approved', actor: 'user', description: `Action approved by user`, details: { actionId } })
       const result = await executeRecoveryAction(actionId)
       return NextResponse.json(result)
     }
 
     if (action === 'execute') {
-      if (!actionId) return NextResponse.json({ error: 'actionId required' }, { status: 400 })
+      if (!actionId) {
+        const pendingAction = db.prepare(`SELECT id FROM recovery_actions WHERE case_id = ? AND status IN ('pending', 'approved') ORDER BY created_at DESC LIMIT 1`).get(id)
+        if (pendingAction) actionId = pendingAction.id
+      }
+      if (!actionId) return NextResponse.json({ error: 'No action found to execute' }, { status: 400 })
+
       const result = await executeRecoveryAction(actionId)
       return NextResponse.json(result)
     }
 
     if (action === 'stop') {
       db.prepare(`UPDATE recovery_cases SET status = 'stopped', resolved_at = datetime('now') WHERE id = ?`).run(id)
-      auditLog('recovery_case', id, 'case_stopped', 'user', {})
+      auditLog({ entityType: 'case', entityId: id, eventType: 'case_stopped', actor: 'user', description: 'Case stopped by user', details: {} })
       return NextResponse.json({ success: true, message: 'Case stopped' })
     }
 
     if (action === 'escalate') {
       const newActionId = uuidv4()
       db.prepare(`
-        INSERT INTO recovery_actions (id, case_id, type, status, priority, scheduled_for, created_at)
-        VALUES (?, ?, 'escalate', 'pending', 'high', datetime('now'), datetime('now'))
+        INSERT INTO recovery_actions (id, case_id, action_type, status, scheduled_at, ai_reasoning, created_at)
+        VALUES (?, ?, 'escalate', 'pending', datetime('now'), 'Manually escalated by user', datetime('now'))
       `).run(newActionId, id)
-      auditLog('recovery_case', id, 'escalation_requested', 'user', { actionId: newActionId })
+      auditLog({ entityType: 'case', entityId: id, eventType: 'escalation_requested', actor: 'user', description: 'Case escalated to human agent', details: { actionId: newActionId } })
       return NextResponse.json({ success: true, actionId: newActionId })
     }
 

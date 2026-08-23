@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '../../page';
+import { formatCurrency } from '../page';
 
 export default function CustomersPage() {
   const router = useRouter();

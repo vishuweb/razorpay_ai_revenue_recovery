@@ -31,6 +31,26 @@ export async function GET(request, { params }) {
     const totalAtRisk = recoveryCases.filter(c => ['open', 'in_progress'].includes(c.status)).reduce((acc, c) => acc + c.amount_at_risk, 0)
     const totalRecovered = recoveryCases.filter(c => c.status === 'recovered').reduce((acc, c) => acc + c.recovered_amount, 0)
 
+    let interventionHistory = []
+    try {
+      interventionHistory = db.prepare(`
+        SELECT ra.action_type as type, ra.discount_percent, ra.result, ra.created_at 
+        FROM recovery_actions ra 
+        JOIN recovery_cases rc ON ra.case_id = rc.id 
+        WHERE rc.customer_id = ? 
+        ORDER BY ra.created_at DESC
+      `).all(id)
+    } catch (e) {
+      // ignore
+    }
+
+    let events = []
+    try {
+      events = db.prepare(`SELECT * FROM events WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20`).all(id)
+    } catch (e) {
+      // ignore
+    }
+
     return NextResponse.json({
       customer,
       paymentHistory,
@@ -39,6 +59,8 @@ export async function GET(request, { params }) {
       recoveryCases,
       recoveryActions,
       auditEntries,
+      interventionHistory,
+      events,
       stats: {
         paymentSuccessRate,
         avgPaymentAmount,

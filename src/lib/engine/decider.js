@@ -42,12 +42,39 @@ export function decideAction(caseData, customerData, classification, prediction,
       action = 'payment_link';
       reasoning = 'Behavioral failure, sending payment link';
     }
+  } else if (classification.category === 'abandonment' && customerData.discount_affinity > 0.5 && caseData.amount_at_risk > customerData.avg_order_value) {
+    action = 'discount';
+    reasoning = 'High value abandonment with discount affinity, offering discount';
+    scheduledDelay = 3600000;
+  } else if (classification.category === 'abandonment' && caseData.amount_at_risk > 50000) {
+    action = 'free_shipping';
+    reasoning = 'High value abandonment, offering free shipping';
+  } else if (classification.category === 'abandonment' && caseData.attempts_made < 2) {
+    action = 'cart_reminder';
+    reasoning = 'Recent abandonment, sending cart reminder';
+  } else if (classification.category === 'opportunity') {
+    action = 'targeted_campaign';
+    reasoning = 'Opportunity identified, initiating targeted campaign';
   } else if (caseData.attempts_made >= 3 && prediction.probability > 0.3) {
     action = 'email';
     reasoning = 'Multiple retries failed, probability is decent, switching to email outreach';
   } else {
     action = 'escalate';
     reasoning = 'Defaulting to escalation';
+  }
+
+  let discount_percent = undefined;
+  let intervention_cost = undefined;
+
+  if (action === 'discount') {
+    discount_percent = 5;
+    if (customerData.discount_affinity > 0.7) {
+      discount_percent = 10;
+    }
+    intervention_cost = Math.round(caseData.amount_at_risk * (discount_percent / 100));
+    if (discount_percent > 5) {
+      requiresApproval = true;
+    }
   }
 
   if (caseData.amount_at_risk > 5000000 || action === 'escalate') {
@@ -58,6 +85,8 @@ export function decideAction(caseData, customerData, classification, prediction,
     action,
     reasoning,
     requiresApproval,
-    scheduledDelay
+    scheduledDelay,
+    discount_percent,
+    intervention_cost
   };
 }

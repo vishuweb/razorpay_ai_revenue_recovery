@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Get the singleton database instance.
@@ -37,28 +38,38 @@ export function getDb() {
 }
 
 /**
- * Reset the entire database — used by the simulator to start fresh.
- * Deletes all data but preserves schema.
+ * Reset the entire database — drops all tables and re-initializes schema.
+ * Used by the simulator to start completely fresh with new schema.
  */
 export function resetDatabase() {
   const db = getDb();
+  db.pragma('foreign_keys = OFF');
   db.exec(`
-    DELETE FROM audit_log;
-    DELETE FROM recovery_actions;
-    DELETE FROM recovery_cases;
-    DELETE FROM payments;
-    DELETE FROM invoices;
-    DELETE FROM subscriptions;
-    DELETE FROM customers;
+    DROP TABLE IF EXISTS audit_log;
+    DROP TABLE IF EXISTS recovery_actions;
+    DROP TABLE IF EXISTS recovery_cases;
+    DROP TABLE IF EXISTS events;
+    DROP TABLE IF EXISTS payments;
+    DROP TABLE IF EXISTS invoices;
+    DROP TABLE IF EXISTS subscriptions;
+    DROP TABLE IF EXISTS customers;
   `);
+  db.pragma('foreign_keys = ON');
+
+  // Re-initialize schema with latest version
+  const schemaPath = path.join(process.cwd(), 'src', 'lib', 'db', 'schema.sql');
+  if (fs.existsSync(schemaPath)) {
+    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    db.exec(schema);
+  }
 }
 
 /**
  * Log an entry to the audit trail.
+ * @param {Object} entry - { entityType, entityId, eventType, description, details, actor, amount }
  */
 export function auditLog(entry) {
   const db = getDb();
-  const { v4: uuidv4 } = require('uuid');
   db.prepare(`
     INSERT INTO audit_log (id, entity_type, entity_id, event_type, description, details, actor, amount, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -68,7 +79,7 @@ export function auditLog(entry) {
     entry.entityId,
     entry.eventType,
     entry.description,
-    entry.details ? JSON.stringify(entry.details) : null,
+    typeof entry.details === 'string' ? entry.details : (entry.details ? JSON.stringify(entry.details) : null),
     entry.actor || 'system',
     entry.amount || null
   );

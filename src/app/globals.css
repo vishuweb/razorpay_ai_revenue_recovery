@@ -387,3 +387,55 @@ html, body {
 .text-danger { color: var(--danger); }
 .glow-danger { text-shadow: 0 0 10px rgba(255, 71, 87, 0.5); }
 .chart-container { height: 300px; width: 100%; }
+
+.code-block {
+  background: #1a1a2e;
+  font-family: 'Courier New', monospace;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  color: #a0a0b8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.details-toggle {
+  color: #3742fa;
+  cursor: pointer;
+  font-size: 0.8rem;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.details-toggle:hover {
+  background: rgba(55, 66, 250, 0.1);
+  color: #5b64fc;
+}
+
+.intelligence-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.affinity-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.affinity-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3742fa, #00d4aa);
+  transition: width 0.6s ease;
+}
