@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '../../page';
 import React from 'react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function CustomerDetailPage({ params }) {
   const router = useRouter();
@@ -35,17 +36,6 @@ export default function CustomerDetailPage({ params }) {
   }
 
   const { customer, paymentHistory, recoveryCases, stats } = data;
-
-  const getStatusBadge = (status) => {
-    switch(status) {
-      case 'recovered': return <span className="badge success">Recovered</span>;
-      case 'failed': return <span className="badge danger">Failed</span>;
-      case 'open': return <span className="badge warning">Open</span>;
-      case 'in_progress': return <span className="badge info">In Progress</span>;
-      case 'succeeded': return <span className="badge success">Success</span>;
-      default: return <span className="badge muted">{status}</span>;
-    }
-  };
 
   return (
     <div className="animate-fade-in">
@@ -141,7 +131,7 @@ export default function CustomerDetailPage({ params }) {
                 <tbody>
                   {recoveryCases.map(c => (
                     <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
-                      <td>{getStatusBadge(c.status)}</td>
+                      <td><StatusBadge status={c.status} /></td>
                       <td style={{ color: 'var(--danger)' }}>{formatCurrency(c.amount_at_risk)}</td>
                       <td>{Math.round(c.recovery_probability * 100)}%</td>
                       <td style={{ color: 'var(--text-muted)' }}>{new Date(c.opened_at).toLocaleDateString()}</td>
@@ -173,7 +163,7 @@ export default function CustomerDetailPage({ params }) {
                     <tr key={p.id}>
                       <td style={{ color: 'var(--text-secondary)' }}>{new Date(p.created_at).toLocaleDateString()}</td>
                       <td>{formatCurrency(p.amount)}</td>
-                      <td>{getStatusBadge(p.status)}</td>
+                      <td><StatusBadge status={p.status} /></td>
                       <td style={{ color: 'var(--text-muted)' }}>{p.payment_method}</td>
                     </tr>
                   ))}

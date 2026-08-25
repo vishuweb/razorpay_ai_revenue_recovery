@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatCurrency } from '../page';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function SimulatorPage() {
   const [loading, setLoading] = useState(false);
