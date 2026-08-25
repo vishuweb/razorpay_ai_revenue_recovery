@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '../../page';
-import { ProbabilityBar } from '../../components/Charts';
 import React from 'react';
+import { ProbabilityBar } from '@/components/charts/RecoveryCharts';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function CaseDetailPage({ params }) {
   const router = useRouter();
@@ -54,16 +55,6 @@ export default function CaseDetailPage({ params }) {
 
   const { case: c, customer, actions, auditEntries } = data;
 
-  const getStatusBadge = (status) => {
-    switch(status) {
-      case 'recovered': return <span className="badge success">Recovered</span>;
-      case 'failed': return <span className="badge danger">Failed</span>;
-      case 'open': return <span className="badge warning">Open</span>;
-      case 'in_progress': return <span className="badge info">In Progress</span>;
-      default: return <span className="badge muted">{status}</span>;
-    }
-  };
-
   return (
     <div className="animate-fade-in">
       <button className="btn ghost mb-4" onClick={() => router.push('/cases')} style={{ marginBottom: '16px' }}>
@@ -76,7 +67,7 @@ export default function CaseDetailPage({ params }) {
             {customer.name} <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem' }}>| {customer.company}</span>
           </h1>
           <div style={{ marginTop: '8px' }}>
-            {getStatusBadge(c.status)}
+            <StatusBadge status={c.status} />
             <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>ID: {c.id}</span>
           </div>
         </div>

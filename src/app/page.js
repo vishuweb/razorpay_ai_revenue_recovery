@@ -3,17 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { RevenueChart, FailureReasonsChart, StatusPieChart, ProbabilityBar } from './components/Charts';
-
-export function formatCurrency(paise) {
-  if (paise == null) return '₹0';
-  const rupees = paise / 100;
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(rupees);
-}
+import { RevenueChart, FailureReasonsChart, StatusPieChart, ProbabilityBar } from '@/components/charts/RecoveryCharts';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -57,16 +49,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const getStatusBadge = (status) => {
-    switch(status) {
-      case 'recovered': return <span className="badge success">Recovered</span>;
-      case 'failed': return <span className="badge danger">Failed</span>;
-      case 'open': return <span className="badge warning">Open</span>;
-      case 'in_progress': return <span className="badge info">In Progress</span>;
-      default: return <span className="badge muted">{status}</span>;
-    }
-  };
 
   return (
     <div className="animate-fade-in">
@@ -164,7 +146,7 @@ export default function DashboardPage() {
                       <ProbabilityBar value={c.recovery_probability} />
                     </div>
                   </td>
-                  <td>{getStatusBadge(c.status)}</td>
+                  <td><StatusBadge status={c.status} /></td>
                   <td><span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{c.recommended_action}</span></td>
                   <td style={{ color: 'var(--text-muted)' }}>{new Date(c.opened_at).toLocaleDateString()}</td>
                 </tr>

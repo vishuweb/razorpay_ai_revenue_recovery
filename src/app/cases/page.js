@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '../page';
-import { ProbabilityBar } from '../components/Charts';
+import { ProbabilityBar } from '@/components/charts/RecoveryCharts';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function CasesPage() {
   const router = useRouter();
@@ -37,16 +38,6 @@ export default function CasesPage() {
     if (score >= 50) return <span className="priority-dot high"></span>;
     if (score >= 30) return <span className="priority-dot medium"></span>;
     return <span className="priority-dot low"></span>;
-  };
-
-  const getStatusBadge = (status) => {
-    switch(status) {
-      case 'recovered': return <span className="badge success">Recovered</span>;
-      case 'failed': return <span className="badge danger">Failed</span>;
-      case 'open': return <span className="badge warning">Open</span>;
-      case 'in_progress': return <span className="badge info">In Progress</span>;
-      default: return <span className="badge muted">{status}</span>;
-    }
   };
 
   return (
@@ -118,7 +109,7 @@ export default function CasesPage() {
                         <ProbabilityBar value={c.recovery_probability} />
                       </div>
                     </td>
-                    <td>{getStatusBadge(c.status)}</td>
+                    <td><StatusBadge status={c.status} /></td>
                     <td><span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{c.recommended_action}</span></td>
                     <td style={{ color: 'var(--text-muted)' }}>{new Date(c.opened_at).toLocaleDateString()}</td>
                   </tr>

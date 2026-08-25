@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { formatCurrency } from '../page';
+import { formatCurrency } from '@/lib/utils/formatCurrency';
 
 export default function AuditPage() {
   const [data, setData] = useState(null);
